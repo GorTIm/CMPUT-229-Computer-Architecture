@@ -1,0 +1,307 @@
+#---------------------------------------------------------------
+# Assignment:           4
+# Due Date:             March 28, 2017
+# Name:                 Weihao Han
+# Unix ID:              whan
+# Lecture Section:      B1
+# Instructor:           Karim Ali
+# Lab Section:          H01 (Monday 14:00 - 16:50)
+# Teaching Assistant:   
+#---------------------------------------------------------------
+
+#----------------------------------------------------------------------
+# The Exception handler will handle the interrupt from keyboard and 
+# timer.And then return to the instruction where the exception occur
+#
+#
+#
+# Inputs:
+#
+#          
+#                 
+# Register Usage
+#	a0:hold the address of the string buffer
+#       k0:intermedia register
+#       s0:store special integer for branch conditon
+#       s1:same as s0
+#	s2:same as s0	
+#	
+#
+#----------------------------------------------------------------------
+
+
+	.kdata
+__m1_:	.asciiz "  Exception "
+__m2_:	.asciiz " occurred and ignored\n"
+__e0_:	.asciiz "  [Interrupt] "
+__e1_:	.asciiz	"  [TLB]"
+__e2_:	.asciiz	"  [TLB]"
+__e3_:	.asciiz	"  [TLB]"
+__e4_:	.asciiz	"  [Address error in inst/data fetch] "
+__e5_:	.asciiz	"  [Address error in store] "
+__e6_:	.asciiz	"  [Bad instruction address] "
+__e7_:	.asciiz	"  [Bad data address] "
+__e8_:	.asciiz	"  [Error in syscall] "
+__e9_:	.asciiz	"  [Breakpoint] "
+__e10_:	.asciiz	"  [Reserved instruction] "
+__e11_:	.asciiz	""
+__e12_:	.asciiz	"  [Arithmetic overflow] "
+__e13_:	.asciiz	"  [Trap] "
+__e14_:	.asciiz	""
+__e15_:	.asciiz	"  [Floating point] "
+__e16_:	.asciiz	""
+__e17_:	.asciiz	""
+__e18_:	.asciiz	"  [Coproc 2]"
+__e19_:	.asciiz	""
+__e20_:	.asciiz	""
+__e21_:	.asciiz	""
+__e22_:	.asciiz	"  [MDMX]"
+__e23_:	.asciiz	"  [Watch]"
+__e24_:	.asciiz	"  [Machine check]"
+__e25_:	.asciiz	""
+__e26_:	.asciiz	""
+__e27_:	.asciiz	""
+__e28_:	.asciiz	""
+__e29_:	.asciiz	""
+__e30_:	.asciiz	"  [Cache]"
+__e31_:	.asciiz	""
+__excp:	.word __e0_, __e1_, __e2_, __e3_, __e4_, __e5_, __e6_, __e7_, __e8_, __e9_
+	.word __e10_, __e11_, __e12_, __e13_, __e14_, __e15_, __e16_, __e17_, __e18_,
+	.word __e19_, __e20_, __e21_, __e22_, __e23_, __e24_, __e25_, __e26_, __e27_,
+	.word __e28_, __e29_, __e30_, __e31_
+s1:	.word 0
+s2:	.word 0
+
+# This is the exception handler code that the processor runs when
+# an exception occurs. It only prints some information about the
+# exception, but can server as a model of how to write a handler.
+#
+# Because we are running in the kernel, we can use $k0/$k1 without
+# saving their old values.
+
+# This is the exception vector address for MIPS-1 (R2000):
+#	.ktext 0x80000080
+# This is the exception vector address for MIPS32:
+	.ktext 0x80000180
+# Select the appropriate one for the mode in which SPIM is compiled.
+	.set noat
+	move $k1 $at		# Save $at
+	.set at
+	sw $v0 s1		# Not re-entrant and we can't trust $sp
+	sw $a0 s2		# But we need to use these registers
+
+	
+# Interrupt-specific code goes here!
+# Don't skip instruction at EPC since it has not executed.
+
+#Check what interrupt condition occur
+interrupt_check:
+	lw $k0,0xffff0000                  #find the 0 bit of keyboard   
+	andi $k0,$k0,0x01                  #control register to detect
+	bne $k0,$zero,keyboard_interrupt   #whether a keyboard interrupt
+	j time_increment                   #occurs
+
+keyboard_interrupt:
+	addi $s0,$zero,113  #dec ASCII code for q
+	lw $k0,0xffff0004   #Check the character in keyboard data register
+	beq $k0,$s0,quit    #If its q or r,go to relevent branch
+	
+	addi $s1,$zero,114  #dec ASCII code for r
+	beq $k0,$s1,reset
+	eret
+quit:
+	li $v0 10
+	syscall			# syscall 10 (exit)
+
+reset:
+	la $a0,time        #reset the string to be 00:00
+	addi $k0,$zero,48
+	sb $k0,5($a0)
+	sb $k0,6($a0)
+	sb $k0,8($a0)
+	sb $k0,9($a0)
+
+	
+	mtc0 $zero,$9
+	addi $t1,$zero,1
+	eret
+	
+
+time_increment:                          #Increment the time of clock
+	la $a0,time                      #in a reasonalbe process
+	addi $s0,$zero,57  #decimal 9
+	addi $s1,$zero,53  #decimal 5
+	addi $s2,$zero,48  
+
+second:
+	lb $k0,9($a0)
+	addi $k0,$k0,1
+	bgt $k0,$s0,tensecond
+	sb $k0,9($a0)
+	j retu
+
+tensecond:
+	lb $k0,8($a0)
+	addi $k0,$k0,1
+	bgt $k0,$s1,minute
+	sb $s2,9($a0)
+	sb $k0,8($a0)
+	j retu
+
+minute:
+	lb $k0,6($a0)
+	addi $k0,$k0,1
+	bgt $k0,$s0,tenminute
+	sb $s2,9($a0)
+	sb $s2,8($a0)
+	sb $k0,6($a0)
+	j retu 
+
+tenminute:
+	lb $k0,5($a0) 
+	addi $k0,$k0,1
+	bgt $k0,$s0,ret
+	sb $s2,9($a0)
+	sb $s2,8($a0)
+	sb $s2,6($a0)
+	sb $k0,5($a0)
+	j retu
+
+retu:
+# Restore registers and reset procesor state
+#
+	lw $v0 s1		# Restore other registers
+	lw $a0 s2
+
+	.set noat
+	move $at $k1		# Restore $at
+
+	.set at
+
+	mtc0 $0 $13		# Clear Cause register
+
+	mfc0 $k0 $12		# Set Status register
+	ori  $k0,$k0,0x01		# Interrupts enabled
+	mtc0 $k0 $12
+	
+
+	
+	mtc0 $zero,$9
+	addi $t1,$zero,1
+	eret
+	
+ret:
+# Return from (non-interrupt) exception. Skip offending instruction
+# at EPC to avoid infinite loop.
+
+	mfc0 $k0 $14		# Bump EPC register
+	addiu $k0 $k0 4		# Skip faulting instruction
+				# (Need to handle delayed branch case here)
+	mtc0 $k0 $14
+
+
+# Restore registers and reset procesor state
+#
+	lw $v0 s1		# Restore other registers
+	lw $a0 s2
+
+	.set noat
+	move $at $k1		# Restore $at
+	.set at
+
+	mtc0 $0 $13		# Clear Cause register
+
+	mfc0 $k0 $12		# Set Status register
+	ori  $k0,$k0,0x1		# Interrupts enabled
+	mtc0 $k0 $12
+	
+
+
+	
+# Return from exception on MIPS32:
+	eret
+
+
+
+# Return sequence for MIPS-I (R2000):
+#	rfe			# Return from exception handler
+				# Should be in jr's delay slot
+#	jr $k0
+#	 nop
+	
+
+
+# Standard startup code.  Invoke the routine "main" with arguments:
+#	main(argc, argv, envp)
+#
+	.text
+	.globl __start
+__start:
+	lw $a0 0($sp)		# argc
+	addiu $a1 $sp 4		# argv
+	addiu $a2 $a1 4		# envp
+	sll $v0 $a0 2
+	addu $a2 $a2 $v0
+	j main
+	nop
+
+	li $v0 10
+	syscall			# syscall 10 (exit)
+
+
+
+
+	.data
+time:	.byte 8,8,8,8,8,48,48,58,48,48,0
+	
+	.text
+
+main:
+	lw $t0,0xffff0000  #Enable Keyboard interrupt by write bit 1 to be 1
+	ori $t0,$t0,0x02
+	sw $t0,0xffff0000
+
+	li $t0,0x00008801
+	mtc0 $t0,$12
+	
+	addi $t0,$zero,100
+	mtc0 $t0,$11
+	mtc0 $zero,$9
+
+	
+	move $t1,$zero  #set t1 as the change indicator
+	la $a0,time
+	addi $a0,$a0,5
+	jal display
+	
+forever:
+	beqz $t1,forever
+	move $t1,$zero
+	la $a0,time
+	jal display
+	j forever
+
+
+display:
+	lb $s1,0($a0) #store the character into s1
+	beqz $s1,done
+
+poll: 
+	lw $s2,0xffff0008  #Set s2 to read from display control register
+	andi $s2,$s2,0x01
+	beqz $s2,poll
+
+	sw $s1,0xffff000C  #When the display is ready,store the character
+	                   #into display data register
+	addi $a0,$a0,1
+	j display
+
+
+done:
+	jr $ra
+
+exit:
+	li $v0 10
+	syscall			# syscall 10 (exit)
+
+	
